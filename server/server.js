@@ -8,6 +8,8 @@ const path = require("path");
 const { Server } = require("socket.io");
 const axios = require("axios");
 const crypto = require("crypto");
+const authRoutes = require("./routes/authRoutes");
+const profileRoutes = require("./routes/profileRoutes");
 
 // Load environment variables
 dotenv.config({ path: path.resolve(__dirname, ".env") });
@@ -33,6 +35,8 @@ app.use(
 );
 
 app.use(express.json());
+app.use("/api/auth", authRoutes);
+app.use("/api/profile", profileRoutes);
 
 // ========================================
 // BASIC BACKEND ROUTES
