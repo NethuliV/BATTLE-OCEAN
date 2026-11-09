@@ -595,15 +595,66 @@ export default function Multiplayer() {
       game.myFleet || [],
       game.incomingShots || []
     );
-    const enemySunkShipSegments = Array.isArray(sunkShipCells) && sunkShipCells.length > 0
-      ? [{
-          cells: [...new Set(sunkShipCells.map((cell) => Number(cell)))],
-          minRow: Math.min(...sunkShipCells.map((cell) => Math.floor(Number(cell) / game.gridSize))),
-          minCol: Math.min(...sunkShipCells.map((cell) => Number(cell) % game.gridSize)),
-          length: [...new Set(sunkShipCells.map((cell) => Number(cell)))].length,
-          orientation: "horizontal",
-        }]
-      : [];
+
+    const normalizedEnemySunkCells = [...new Set(
+      (sunkShipCells || []).map((cell) => Number(cell))
+    )].sort((a, b) => a - b);
+    const enemySunkShipSegments = [];
+    const visitedEnemyCells = new Set();
+
+    for (const cell of normalizedEnemySunkCells) {
+      if (visitedEnemyCells.has(cell)) continue;
+
+      const stack = [cell];
+      const group = [];
+      visitedEnemyCells.add(cell);
+
+      while (stack.length > 0) {
+        const current = stack.pop();
+        group.push(current);
+
+        const row = Math.floor(current / game.gridSize);
+        const col = current % game.gridSize;
+        const neighbors = [
+          [row - 1, col],
+          [row + 1, col],
+          [row, col - 1],
+          [row, col + 1],
+        ];
+
+        for (const [nextRow, nextCol] of neighbors) {
+          if (
+            nextRow < 0 ||
+            nextCol < 0 ||
+            nextRow >= game.gridSize ||
+            nextCol >= game.gridSize
+          ) {
+            continue;
+          }
+
+          const nextIndex = nextRow * game.gridSize + nextCol;
+
+          if (!visitedEnemyCells.has(nextIndex) && enemySunkShipCells.has(nextIndex)) {
+            visitedEnemyCells.add(nextIndex);
+            stack.push(nextIndex);
+          }
+        }
+      }
+
+      if (group.length === 0) continue;
+
+      const rows = group.map((item) => Math.floor(item / game.gridSize));
+      const cols = group.map((item) => item % game.gridSize);
+      const isHorizontal = rows.every((row) => row === rows[0]);
+
+      enemySunkShipSegments.push({
+        cells: [...group].sort((a, b) => a - b),
+        minRow: Math.min(...rows),
+        minCol: Math.min(...cols),
+        length: group.length,
+        orientation: isHorizontal ? "horizontal" : "vertical",
+      });
+    }
 
     const shots = isMyBoard
       ? game.incomingShots || []
