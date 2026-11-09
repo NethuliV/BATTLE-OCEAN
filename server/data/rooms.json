@@ -1,0 +1,283 @@
+[
+  {
+    "code": "BO-D13946",
+    "gridSize": 8,
+    "status": "waiting",
+    "currentTurn": null,
+    "challengePendingFor": null,
+    "totalHits": 0,
+    "winner": null,
+    "players": [
+      {
+        "userId": "6aef3fa90187d265c1671a92",
+        "username": "alice_room_test_01",
+        "fleet": [],
+        "ready": false,
+        "connected": false,
+        "shots": [],
+        "remainingBombs": 22,
+        "score": 0,
+        "hits": 0
+      }
+    ]
+  },
+  {
+    "code": "BO-879832",
+    "gridSize": 8,
+    "status": "waiting",
+    "currentTurn": null,
+    "challengePendingFor": null,
+    "totalHits": 0,
+    "winner": null,
+    "players": [
+      {
+        "userId": "6aef3fe40187d265c1671a94",
+        "username": "alice_room_test_1794064355998",
+        "fleet": [],
+        "ready": false,
+        "connected": true,
+        "shots": [],
+        "remainingBombs": 22,
+        "score": 0,
+        "hits": 0
+      },
+      {
+        "userId": "6aef3fe50187d265c1671a95",
+        "username": "bob_room_test_1794064355999",
+        "fleet": [],
+        "ready": false,
+        "connected": true,
+        "shots": [],
+        "remainingBombs": 22,
+        "score": 0,
+        "hits": 0
+      }
+    ]
+  },
+  {
+    "code": "BO-22ABD3",
+    "gridSize": 8,
+    "status": "waiting",
+    "currentTurn": null,
+    "challengePendingFor": null,
+    "totalHits": 0,
+    "winner": null,
+    "players": [
+      {
+        "userId": "6aef413b398db472387ae797",
+        "username": "alice_room_test_1794064699266",
+        "fleet": [],
+        "ready": false,
+        "connected": false,
+        "shots": [],
+        "remainingBombs": 22,
+        "score": 0,
+        "hits": 0
+      },
+      {
+        "userId": "6aef413c398db472387ae798",
+        "username": "bob_room_test_1794064699267",
+        "fleet": [],
+        "ready": false,
+        "connected": false,
+        "shots": [],
+        "remainingBombs": 22,
+        "score": 0,
+        "hits": 0
+      }
+    ]
+  },
+  {
+    "code": "BO-C6CD86",
+    "gridSize": 8,
+    "status": "waiting",
+    "currentTurn": null,
+    "challengePendingFor": null,
+    "totalHits": 0,
+    "winner": null,
+    "players": [
+      {
+        "userId": "56abe6d0277d5d4895c39693",
+        "username": "dim",
+        "fleet": [],
+        "ready": false,
+        "connected": false,
+        "shots": [],
+        "remainingBombs": 22,
+        "score": 0,
+        "hits": 0
+      }
+    ]
+  },
+  {
+    "code": "BO-46BCB2",
+    "gridSize": 8,
+    "status": "waiting",
+    "currentTurn": null,
+    "challengePendingFor": null,
+    "totalHits": 0,
+    "winner": null,
+    "players": [
+      {
+        "userId": "56abe6d0277d5d4895c39693",
+        "username": "dim",
+        "fleet": [],
+        "ready": false,
+        "connected": false,
+        "shots": [],
+        "remainingBombs": 22,
+        "score": 0,
+        "hits": 0
+      }
+    ]
+  },
+  {
+    "code": "BO-6DB3A3",
+    "gridSize": 8,
+    "status": "waiting",
+    "currentTurn": null,
+    "challengePendingFor": null,
+    "totalHits": 0,
+    "winner": null,
+    "players": [
+      {
+        "userId": "7d59c68304f144da3c0b693f",
+        "username": "uvt",
+        "fleet": [],
+        "ready": false,
+        "connected": false,
+        "shots": [],
+        "remainingBombs": 22,
+        "score": 0,
+        "hits": 0
+      }
+    ]
+  },
+  {
+    "code": "BO-1D34DF",
+    "gridSize": 8,
+    "status": "playing",
+    "currentTurn": "7d59c68304f144da3c0b693f",
+    "challengePendingFor": null,
+    "totalHits": 5,
+    "winner": null,
+    "players": [
+      {
+        "userId": "7d59c68304f144da3c0b693f",
+        "username": "uvt",
+        "fleet": [
+          [
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          [
+            18,
+            19,
+            20,
+            21
+          ],
+          [
+            34,
+            35,
+            36
+          ],
+          [
+            50,
+            51,
+            52
+          ],
+          [
+            8,
+            16
+          ]
+        ],
+        "ready": true,
+        "connected": true,
+        "shots": [
+          {
+            "cell": 9,
+            "result": "miss"
+          },
+          {
+            "cell": 36,
+            "result": "miss"
+          }
+        ],
+        "remainingBombs": 20,
+        "score": 0,
+        "hits": 0
+      },
+      {
+        "userId": "c6d8543f99f53930209a24cf",
+        "username": "sen",
+        "fleet": [
+          [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          [
+            18,
+            19,
+            20,
+            21
+          ],
+          [
+            33,
+            34,
+            35
+          ],
+          [
+            45,
+            46,
+            47
+          ],
+          [
+            50,
+            51
+          ]
+        ],
+        "ready": true,
+        "connected": true,
+        "shots": [
+          {
+            "cell": 17,
+            "result": "miss"
+          },
+          {
+            "cell": 2,
+            "result": "hit"
+          },
+          {
+            "cell": 3,
+            "result": "hit"
+          },
+          {
+            "cell": 4,
+            "result": "hit"
+          },
+          {
+            "cell": 5,
+            "result": "hit"
+          },
+          {
+            "cell": 6,
+            "result": "hit"
+          },
+          {
+            "cell": 7,
+            "result": "miss"
+          }
+        ],
+        "remainingBombs": 15,
+        "score": 50,
+        "hits": 5
+      }
+    ]
+  }
+]

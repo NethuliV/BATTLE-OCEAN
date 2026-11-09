@@ -71,17 +71,6 @@ export default function Profile() {
             <span>VICTORIES</span>
             <h2>{user?.wins ?? 0}</h2>
           </div>
-
-          <div className="stat-card">
-            <span>WIN RATE</span>
-            <h2>
-              {user?.gamesPlayed
-                ? `${Math.round(
-                    (user.wins / user.gamesPlayed) * 100
-                  )}%`
-                : "0%"}
-            </h2>
-          </div>
         </section>
 
         <h2 className="section-heading">PLAYER DETAILS</h2>
@@ -112,6 +101,9 @@ export default function Profile() {
           <Link to="/solo" className="auth-button">
             PLAY SOLO GAME
           </Link>
+          <Link to="/multiplayer" className="auth-button">
+    PLAY WITH A FRIEND
+  </Link>
         </div>
       </main>
     </div>

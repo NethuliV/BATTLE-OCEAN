@@ -30,7 +30,7 @@ export default function Login() {
 
     try {
       await login(form);
-      navigate("/profile");
+      navigate("/home");
     } catch (err) {
       setError(
         err.response?.data?.message ||

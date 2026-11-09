@@ -45,7 +45,7 @@ export default function Signup() {
         password: form.password,
       });
 
-      navigate("/profile");
+      navigate("/home");
     } catch (err) {
       setError(
         err.response?.data?.message ||

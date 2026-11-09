@@ -1,18 +1,27 @@
 
 const express = require("express");
+const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const {
+  createUserRecord,
+  findUserByEmail,
+} = require("../data/fallbackUsers");
 
 const router = express.Router();
 
 // Generate authentication token
 function generateToken(userId) {
   return jwt.sign(
-    { userId },
+    { id: userId, userId },
     process.env.JWT_SECRET,
     { expiresIn: "7d" }
   );
+}
+
+function isDatabaseReady() {
+  return mongoose.connection.readyState === 1;
 }
 
 // ==================================
@@ -38,12 +47,23 @@ router.post(["/register", "/signup"], async (req, res) => {
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedUsername = username.trim();
 
-    const existingUser = await User.findOne({
-      $or: [
-        { email: normalizedEmail },
-        { username: normalizedUsername },
-      ],
-    });
+    const existingUser = isDatabaseReady()
+      ? await User.findOne({
+          $or: [
+            { email: normalizedEmail },
+            { username: normalizedUsername },
+          ],
+        })
+      : findUserByEmail(normalizedEmail) ||
+        (() => {
+          const userStore = require("../data/fallbackUsers");
+          for (const user of userStore.fallbackUsers.values()) {
+            if (user.username === normalizedUsername) {
+              return user;
+            }
+          }
+          return null;
+        })();
 
     if (existingUser) {
       return res.status(409).json({
@@ -54,14 +74,21 @@ router.post(["/register", "/signup"], async (req, res) => {
     // Hash the password before saving
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    const newUser = await User.create({
-      fullName: fullName.trim(),
-      username: normalizedUsername,
-      email: normalizedEmail,
-      password: hashedPassword,
-    });
+    const newUser = isDatabaseReady()
+      ? await User.create({
+          fullName: fullName.trim(),
+          username: normalizedUsername,
+          email: normalizedEmail,
+          password: hashedPassword,
+        })
+      : createUserRecord({
+          fullName: fullName.trim(),
+          username: normalizedUsername,
+          email: normalizedEmail,
+          password: hashedPassword,
+        });
 
-    const token = generateToken(newUser._id.toString());
+    const token = generateToken(String(newUser._id || newUser.id));
 
     res.status(201).json({
       message: "Account created successfully!",
@@ -92,6 +119,44 @@ router.post(["/register", "/signup"], async (req, res) => {
 // SIGN IN
 // ==================================
 
+router.get("/me", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
+        message: "Please log in to access this page.",
+      });
+    }
+
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.userId || decoded.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        message: "Invalid or expired login session.",
+      });
+    }
+
+    const user = isDatabaseReady()
+      ? await User.findById(userId).select("-password")
+      : require("../data/fallbackUsers").findUserById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "Player not found.",
+      });
+    }
+
+    res.json({ user });
+  } catch (error) {
+    return res.status(401).json({
+      message: "Invalid or expired login session.",
+    });
+  }
+});
+
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -102,9 +167,11 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    const user = await User.findOne({
-      email: email.trim().toLowerCase(),
-    }).select("+password");
+    const user = isDatabaseReady()
+      ? await User.findOne({
+          email: email.trim().toLowerCase(),
+        }).select("+password")
+      : require("../data/fallbackUsers").findUserByEmail(email.trim().toLowerCase());
 
     if (!user) {
       return res.status(401).json({
@@ -123,7 +190,7 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    const token = generateToken(user._id.toString());
+    const token = generateToken(String(user._id || user.id));
 
     res.json({
       message: "Login successful!",

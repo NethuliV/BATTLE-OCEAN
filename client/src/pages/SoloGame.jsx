@@ -1,10 +1,11 @@
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import axios from "axios";
+import { API_URL, useAuth } from "../context/AuthContext";
 import "./SoloGame.css";
 
 const SHIPS = [5, 4, 3, 3, 2];
-const EXTRA_BOMBS = 5;
+const EXTRA_BOMBS = 20;
 const CHALLENGE_SECONDS = 15;
 
 function createEmptyBoard(size) {
@@ -13,6 +14,34 @@ function createEmptyBoard(size) {
 
 function placeShips(size) {
   const board = createEmptyBoard(size);
+
+  const isBlockedByNeighbor = (row, col) => {
+    for (let rowOffset = -1; rowOffset <= 1; rowOffset += 1) {
+      for (let colOffset = -1; colOffset <= 1; colOffset += 1) {
+        if (rowOffset === 0 && colOffset === 0) {
+          continue;
+        }
+
+        const nextRow = row + rowOffset;
+        const nextCol = col + colOffset;
+
+        if (
+          nextRow < 0 ||
+          nextRow >= size ||
+          nextCol < 0 ||
+          nextCol >= size
+        ) {
+          continue;
+        }
+
+        if (board[nextRow * size + nextCol] !== null) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  };
 
   for (const shipLength of SHIPS) {
     let placed = false;
@@ -45,7 +74,13 @@ function placeShips(size) {
         positions.push(r * size + c);
       }
 
-      if (positions.some((index) => board[index] !== null)) {
+      const blocked = positions.some((index) => {
+        const nextRow = Math.floor(index / size);
+        const nextCol = index % size;
+        return isBlockedByNeighbor(nextRow, nextCol);
+      });
+
+      if (blocked) {
         continue;
       }
 
@@ -57,7 +92,6 @@ function placeShips(size) {
     }
 
     if (!placed) {
-      // Retry with a fresh board if placement fails.
       return placeShips(size);
     }
   }
@@ -78,7 +112,95 @@ function createNewGame(size) {
   };
 }
 
+function getShipGroups(board, size) {
+  const visited = new Set();
+  const groups = [];
+
+  for (let index = 0; index < board.length; index += 1) {
+    if (board[index] !== "ship" || visited.has(index)) continue;
+
+    const queue = [index];
+    const group = [];
+    visited.add(index);
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      group.push(current);
+
+      const row = Math.floor(current / size);
+      const col = current % size;
+      const neighbors = [
+        [row - 1, col],
+        [row + 1, col],
+        [row, col - 1],
+        [row, col + 1],
+      ];
+
+      for (const [nextRow, nextCol] of neighbors) {
+        if (
+          nextRow < 0 ||
+          nextCol < 0 ||
+          nextRow >= size ||
+          nextCol >= size
+        ) {
+          continue;
+        }
+
+        const nextIndex = nextRow * size + nextCol;
+
+        if (board[nextIndex] === "ship" && !visited.has(nextIndex)) {
+          visited.add(nextIndex);
+          queue.push(nextIndex);
+        }
+      }
+    }
+
+    groups.push(group);
+  }
+
+  return groups;
+}
+
+function getSunkShipCells(board, shots, size) {
+  const sunkCells = new Set();
+
+  getShipGroups(board, size).forEach((group) => {
+    if (group.every((cell) => shots[cell] === "hit")) {
+      group.forEach((cell) => sunkCells.add(cell));
+    }
+  });
+
+  return sunkCells;
+}
+
+function getSunkShipSegments(board, shots, size) {
+  const segments = [];
+
+  getShipGroups(board, size).forEach((group) => {
+    if (!group.every((cell) => shots[cell] === "hit")) {
+      return;
+    }
+
+    const ordered = [...group].sort((a, b) => a - b);
+    const rows = ordered.map((cell) => Math.floor(cell / size));
+    const cols = ordered.map((cell) => cell % size);
+    const isHorizontal = rows.every((row) => row === rows[0]);
+
+    segments.push({
+      cells: ordered,
+      minRow: Math.min(...rows),
+      minCol: Math.min(...cols),
+      length: ordered.length,
+      orientation: isHorizontal ? "horizontal" : "vertical",
+    });
+  });
+
+  return segments;
+}
+
 export default function SoloGame() {
+  const { refreshUser } = useAuth();
+  const resultSavedRef = useRef(false);
   const [size, setSize] = useState(10);
   const [game, setGame] = useState(() => createNewGame(10));
   const [selectedCell, setSelectedCell] = useState(null);
@@ -88,6 +210,7 @@ export default function SoloGame() {
 
   const [challenge, setChallenge] = useState(null);
   const [answer, setAnswer] = useState("");
+  const [missStreak, setMissStreak] = useState(0);
   const [secondsLeft, setSecondsLeft] = useState(
     CHALLENGE_SECONDS
   );
@@ -98,6 +221,8 @@ export default function SoloGame() {
   const [showShips, setShowShips] = useState(false);
 
   function startGame(nextSize = size) {
+    resultSavedRef.current = false;
+    setMissStreak(0);
     setSize(nextSize);
     setGame(createNewGame(nextSize));
     setSelectedCell(null);
@@ -109,6 +234,42 @@ export default function SoloGame() {
     setShowShips(false);
     setMessage("Select a square and launch your bomb.");
   }
+
+  useEffect(() => {
+    if (game.status === "playing" || resultSavedRef.current) {
+      return;
+    }
+
+    const saveResult = async () => {
+      const token = localStorage.getItem("battleOceanToken");
+
+      if (!token) {
+        return;
+      }
+
+      try {
+        await axios.post(
+          `${API_URL}/profile/game-result`,
+          {
+            score: game.score,
+            result: game.status === "won" ? "win" : "loss",
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        await refreshUser();
+      } catch (error) {
+        console.error("Could not save score update:", error);
+      }
+    };
+
+    resultSavedRef.current = true;
+    saveResult();
+  }, [game.status, game.score, refreshUser]);
 
   useEffect(() => {
     if (!challenge || challenge.submitted) return;
@@ -214,15 +375,25 @@ export default function SoloGame() {
           ? "Hit confirmed, but you have no bombs left. Mission failed."
           : "No bombs remaining. Mission failed."
       );
+      setMissStreak(0);
       return;
     }
 
     setGame(nextGame);
 
     if (isHit) {
+      setMissStreak(0);
       setMessage("DIRECT HIT! You may shoot again.");
     } else {
-      loadChallenge();
+      const nextMissStreak = missStreak + 1;
+      setMissStreak(nextMissStreak);
+
+      if (nextMissStreak >= 3) {
+        setMessage("Three misses in a row! Solve the Fish challenge.");
+        loadChallenge();
+      } else {
+        setMessage(`Missed shot! ${3 - nextMissStreak} more miss${3 - nextMissStreak === 1 ? "" : "es"} before the Fish challenge triggers.`);
+      }
     }
   }
 
@@ -245,9 +416,11 @@ export default function SoloGame() {
       if (response.data.correct) {
         setChallenge(null);
         setAnswer("");
+        setMissStreak(0);
         setMessage("Correct answer! You may continue.");
       } else {
         setChallenge(null);
+        setMissStreak(0);
         setGame((previous) => ({
           ...previous,
           status: "lost",
@@ -266,6 +439,16 @@ export default function SoloGame() {
   const totalShipCells = SHIPS.reduce(
     (sum, length) => sum + length,
     0
+  );
+  const sunkShipCells = getSunkShipCells(
+    game.ships,
+    game.shots,
+    game.size
+  );
+  const sunkShipSegments = getSunkShipSegments(
+    game.ships,
+    game.shots,
+    game.size
   );
 
   const gameOver = game.status !== "playing";
@@ -299,7 +482,7 @@ export default function SoloGame() {
               <select
                 id="grid-size"
                 value={size}
-                disabled={!gameOver || Boolean(challenge)}
+                disabled={Boolean(challenge)}
                 onChange={(event) =>
                   startGame(Number(event.target.value))
                 }
@@ -339,12 +522,16 @@ export default function SoloGame() {
                 const row = Math.floor(index / game.size);
                 const col = index % game.size;
                 const isSelected = selectedCell === index;
+                const isSunkShip = sunkShipCells.has(index);
+                const revealShip = showShips && game.ships[index] === "ship" && shot === null;
 
                 let cellClass = "grid-cell";
 
                 if (shot === "hit") cellClass += " cell-hit";
+                if (isSunkShip) cellClass += " cell-sunk";
                 if (shot === "miss") cellClass += " cell-miss";
                 if (isSelected) cellClass += " cell-selected";
+                if (revealShip) cellClass += " cell-debug-ship";
 
                 return (
                   <button
@@ -360,12 +547,25 @@ export default function SoloGame() {
                     }
                     onClick={() => setSelectedCell(index)}
                   >
-                    {shot === "hit" && <span>✹</span>}
+                    {shot === "hit" && !isSunkShip && <span>✹</span>}
                     {shot === "miss" && <span>·</span>}
                     {shot === null && isSelected && <span>⌖</span>}
                   </button>
                 );
               })}
+
+              {sunkShipSegments.map((ship, index) => (
+                <div
+                  key={`solo-sunk-${index}`}
+                  className="sunk-ship"
+                  style={{
+                    left: `${(ship.minCol / game.size) * 100}%`,
+                    top: `${(ship.minRow / game.size) * 100}%`,
+                    width: `${(ship.orientation === "horizontal" ? ship.length : 1) * (100 / game.size)}%`,
+                    height: `${(ship.orientation === "vertical" ? ship.length : 1) * (100 / game.size)}%`,
+                  }}
+                />
+              ))}
             </div>
           </div>
 
@@ -491,7 +691,8 @@ export default function SoloGame() {
           )}
 
           <div className="legend">
-            <div><span className="legend-dot dot-hit" /> Ship destroyed</div>
+            <div><span className="legend-dot dot-sunk" /> Sunk ship</div>
+            <div><span className="legend-dot dot-hit" /> Hit ship</div>
             <div><span className="legend-dot dot-miss" /> Water / missed shot</div>
             <div><span className="legend-dot dot-selected" /> Selected target</div>
           </div>

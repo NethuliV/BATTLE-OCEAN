@@ -14,8 +14,15 @@ function authMiddleware(req, res, next) {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.userId || decoded.id;
 
-    req.userId = decoded.userId;
+    if (!userId) {
+      return res.status(401).json({
+        message: "Invalid or expired login session.",
+      });
+    }
+
+    req.userId = userId;
 
     next();
   } catch (error) {

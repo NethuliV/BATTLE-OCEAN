@@ -8,39 +8,80 @@ const path = require("path");
 const { Server } = require("socket.io");
 const axios = require("axios");
 const crypto = require("crypto");
+
 const authRoutes = require("./routes/authRoutes");
 const profileRoutes = require("./routes/profileRoutes");
+const setupMultiplayer = require("./multiplayer/multiplayerHandler");
 
-// Load environment variables
-dotenv.config({ path: path.resolve(__dirname, ".env") });
+// ========================================
+// LOAD ENVIRONMENT VARIABLES
+// ========================================
 
-// Initialize Express
+dotenv.config({
+  path: path.resolve(__dirname, ".env"),
+});
+
+// ========================================
+// INITIALIZE EXPRESS AND HTTP SERVER
+// ========================================
+
 const app = express();
 const httpServer = http.createServer(app);
 
-// Initialize Socket.IO
-const io = new Server(httpServer, {
-  cors: {
-    origin: "http://localhost:5173",
-    methods: ["GET", "POST"],
-  },
-});
+// ========================================
+// CORS CONFIGURATION
+// ========================================
 
-// Middleware
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://localhost:4173",
+  "http://localhost:4174",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:4173",
+  "http://127.0.0.1:4174",
+];
+
 app.use(
   cors({
-    origin: true,
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin) || origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:")) {
+        callback(null, true);
+        return;
+      }
+
+      callback(null, true);
+    },
     credentials: true,
   })
 );
 
 app.use(express.json());
-app.use("/api/auth", authRoutes);
-app.use("/api/profile", profileRoutes);
 
 // ========================================
-// BASIC BACKEND ROUTES
+// INITIALIZE SOCKET.IO
 // ========================================
+
+const io = new Server(httpServer, {
+  cors: {
+    origin: true,
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+});
+
+// Register multiplayer event handlers.
+setupMultiplayer(io);
+
+// ========================================
+// API ROUTES
+// ========================================
+
+// Authentication routes
+app.use("/api/auth", authRoutes);
+
+// Player profile routes
+app.use("/api/profile", profileRoutes);
 
 // Home route
 app.get("/", (req, res) => {
@@ -49,7 +90,7 @@ app.get("/", (req, res) => {
   });
 });
 
-// Health check route
+// Health check
 app.get("/api/health", (req, res) => {
   res.json({
     status: "OK",
@@ -61,25 +102,13 @@ app.get("/api/health", (req, res) => {
 });
 
 // ========================================
-// SOCKET.IO CONNECTION
-// ========================================
-
-io.on("connection", (socket) => {
-  console.log("Player connected:", socket.id);
-
-  socket.on("disconnect", () => {
-    console.log("Player disconnected:", socket.id);
-  });
-});
-
-// ========================================
 // FISH API QUESTION SYSTEM
 // ========================================
 
-// Store active Fish API challenges
+// Store active Fish API challenges.
 const fishChallenges = new Map();
 
-// Get a Fish API question
+// Get a Fish API question.
 app.get("/api/fish/question", async (req, res) => {
   try {
     const response = await axios.get(
@@ -92,6 +121,7 @@ app.get("/api/fish/question", async (req, res) => {
     const data = response.data;
 
     const imageUrl = data.question || data.image || data.url;
+
     const solution =
       data.solution ??
       data.answer ??
@@ -105,16 +135,13 @@ app.get("/api/fish/question", async (req, res) => {
       });
     }
 
-    // Generate a unique challenge ID
     const challengeId = crypto.randomUUID();
 
-    // Store the correct answer on the backend
     fishChallenges.set(challengeId, {
       answer: String(solution).trim(),
       expiresAt: Date.now() + 15000,
     });
 
-    // Send the question to the frontend
     res.json({
       challengeId,
       imageUrl,
@@ -129,7 +156,7 @@ app.get("/api/fish/question", async (req, res) => {
   }
 });
 
-// Submit the Fish API answer
+// Submit a Fish API answer.
 app.post("/api/fish/answer", (req, res) => {
   const { challengeId, answer } = req.body;
 
@@ -149,10 +176,9 @@ app.post("/api/fish/answer", (req, res) => {
     });
   }
 
-  // Remove the challenge so it cannot be reused
+  // Prevent reusing the same challenge.
   fishChallenges.delete(challengeId);
 
-  // Check whether the time has expired
   if (Date.now() > challenge.expiresAt) {
     return res.json({
       correct: false,
@@ -160,7 +186,6 @@ app.post("/api/fish/answer", (req, res) => {
     });
   }
 
-  // Check the submitted answer
   const correct =
     String(answer).trim() === challenge.answer;
 
@@ -178,6 +203,46 @@ app.post("/api/fish/answer", (req, res) => {
 
 const PORT = Number(process.env.PORT) || 5000;
 
+async function connectToMongo() {
+  const mongoUri = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/battleocean";
+
+  if (!process.env.MONGODB_URI) {
+    console.warn(
+      "MONGODB_URI is not set. Trying the local MongoDB instance at mongodb://127.0.0.1:27017/battleocean."
+    );
+  }
+
+  try {
+    await Promise.race([
+      mongoose.connect(mongoUri, {
+        serverSelectionTimeoutMS: 5000,
+        connectTimeoutMS: 5000,
+        socketTimeoutMS: 15000,
+      }),
+      new Promise((_, reject) => {
+        setTimeout(
+          () => reject(new Error("MongoDB connection timed out.")),
+          5000
+        );
+      }),
+    ]);
+
+    console.log("MongoDB connected successfully!");
+    return true;
+  } catch (error) {
+    console.warn(
+      "MongoDB connection failed. Continuing in local fallback mode:",
+      error.message
+    );
+
+    mongoose.connection.on("error", (err) => {
+      console.warn("MongoDB runtime error:", err.message);
+    });
+
+    return false;
+  }
+}
+
 function listenOnPort(port) {
   return new Promise((resolve, reject) => {
     const onError = (error) => {
@@ -192,47 +257,49 @@ function listenOnPort(port) {
 
     httpServer.once("error", onError);
     httpServer.once("listening", onListening);
+
     httpServer.listen(port);
   });
 }
 
 async function startServer() {
   try {
-    const mongoUri = process.env.MONGODB_URI;
+    await connectToMongo();
 
-    if (!mongoUri) {
-      console.warn(
-        "MONGODB_URI is not set. Starting server without a MongoDB connection."
-      );
-    } else {
-      await mongoose.connect(mongoUri);
-      console.log("MongoDB connected successfully!");
-    }
-
-    const candidatePorts = [PORT, 5001, 5002, 5003, 5004, 5005, 5006, 5007, 5008, 5009];
-    let portInUse = false;
+    const candidatePorts = [
+      PORT,
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+    ];
 
     for (const port of candidatePorts) {
       try {
         await listenOnPort(port);
-        console.log(`Battle Ocean server running on port ${port}`);
-        process.env.PORT = String(port);
+
+        console.log(
+          `Battle Ocean server running on port ${port}`
+        );
+
         return;
       } catch (error) {
         if (error.code !== "EADDRINUSE") {
           throw error;
         }
 
-        portInUse = true;
+        console.warn(`Port ${port} is already in use.`);
       }
     }
 
-    if (portInUse) {
-      console.error(
-        "No free port available. Please stop the stale Node process or set a different PORT value."
-      );
-      process.exit(1);
-    }
+    throw new Error(
+      "No free server port available. Stop the other Node.js process."
+    );
   } catch (error) {
     console.error(
       "Server startup failed:",

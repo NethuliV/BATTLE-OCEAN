@@ -6,37 +6,44 @@ import {
   Navigate,
 } from "react-router-dom";
 
-import { AuthProvider } from "./context/AuthContext";
-
+import Multiplayer from "./pages/Multiplayer";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
-
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Profile from "./pages/Profile";
-
-import SoloGame from "./SoloGame";
+import Home from "./pages/Home";
+import SoloGame from "./pages/SoloGame";
 
 import "./App.css";
+
+function RootRedirect() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return <div className="loading-screen">Loading Battle Ocean...</div>;
+  }
+
+  return user ? <Navigate to="/home" replace /> : <Navigate to="/login" replace />;
+}
 
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
 
-          {/* Login page */}
           <Route
-            path="/login"
-            element={<Login />}
+            path="/home"
+            element={
+              <ProtectedRoute>
+                <Home />
+              </ProtectedRoute>
+            }
           />
 
-          {/* Sign up page */}
-          <Route
-            path="/signup"
-            element={<Signup />}
-          />
-
-          {/* Protected player profile */}
           <Route
             path="/profile"
             element={
@@ -46,7 +53,6 @@ function App() {
             }
           />
 
-          {/* Protected solo game */}
           <Route
             path="/solo"
             element={
@@ -56,18 +62,17 @@ function App() {
             }
           />
 
-          {/* Default page */}
           <Route
-            path="/"
-            element={<Navigate to="/login" replace />}
+            path="/multiplayer"
+            element={
+              <ProtectedRoute>
+                <Multiplayer />
+              </ProtectedRoute>
+            }
           />
 
-          {/* Unknown routes */}
-          <Route
-            path="*"
-            element={<Navigate to="/login" replace />}
-          />
-
+          <Route path="/" element={<RootRedirect />} />
+          <Route path="*" element={<RootRedirect />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
