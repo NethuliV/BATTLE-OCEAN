@@ -3,13 +3,17 @@ import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { Link } from "react-router-dom";
 import { io } from "socket.io-client";
+import { API_URL } from "../context/AuthContext";
+import {
+  SHIPS,
+  generateRandomFleet as generateFleetUtil,
+  canPlaceShip,
+} from "../utils/shipPlacement.js";
 
 import "../Auth.css";
 import "./Multiplayer.css";
 
 const SERVER_URL = import.meta.env.VITE_SOCKET_URL || window.location.origin;
-
-const SHIPS = [5, 4, 3, 3, 2];
 
 function getUserIdFromToken(token) {
   try {
@@ -103,6 +107,8 @@ export default function Multiplayer() {
         setMessage(
           `VICTORY! You scored ${result.yourScore} points.`
         );
+      } else if (result.reason === "challenge-failed") {
+        setMessage("MISSION FAILED! You did not solve the Fish API challenge.");
       } else if (result.winner) {
         setMessage("You lost this battle. Better luck next time!");
       } else {
@@ -235,50 +241,11 @@ export default function Multiplayer() {
 
   const generateRandomFleet = () => {
     const size = game?.gridSize || gridSize;
-    const occupied = new Set();
-    const generated = [];
+    const generated = generateFleetUtil(size, SHIPS);
 
-    for (const length of SHIPS) {
-      let placed = false;
-
-      for (let attempt = 0; attempt < 2000 && !placed; attempt += 1) {
-        const row = Math.floor(Math.random() * size);
-        const col = Math.floor(Math.random() * size);
-        const isVertical = Math.random() > 0.5;
-        const cells = [];
-
-        let valid = true;
-
-        for (let index = 0; index < length; index += 1) {
-          const nextRow = row + (isVertical ? index : 0);
-          const nextCol = col + (!isVertical ? index : 0);
-
-          if (nextRow >= size || nextCol >= size) {
-            valid = false;
-            break;
-          }
-
-          const cell = nextRow * size + nextCol;
-
-          if (occupied.has(cell)) {
-            valid = false;
-            break;
-          }
-
-          cells.push(cell);
-        }
-
-        if (!valid) continue;
-
-        generated.push(cells);
-        for (const cell of cells) occupied.add(cell);
-        placed = true;
-      }
-
-      if (!placed) {
-        setError("Could not auto-place a valid fleet. Please arrange ships manually.");
-        return false;
-      }
+    if (!generated) {
+      setError("Could not auto-place a valid fleet. Please arrange ships manually.");
+      return false;
     }
 
     setFleet(generated);
@@ -300,40 +267,9 @@ export default function Multiplayer() {
       return;
     }
 
-    const occupied = fleet.flat();
+    const occupiedSet = new Set(fleet.flat());
 
-    const touchingOccupied = cells.some((item) => {
-      const row = Math.floor(item / (game?.gridSize || gridSize));
-      const col = item % (game?.gridSize || gridSize);
-
-      for (let rowOffset = -1; rowOffset <= 1; rowOffset += 1) {
-        for (let colOffset = -1; colOffset <= 1; colOffset += 1) {
-          if (rowOffset === 0 && colOffset === 0) continue;
-
-          const nextRow = row + rowOffset;
-          const nextCol = col + colOffset;
-
-          if (
-            nextRow < 0 ||
-            nextRow >= (game?.gridSize || gridSize) ||
-            nextCol < 0 ||
-            nextCol >= (game?.gridSize || gridSize)
-          ) {
-            continue;
-          }
-
-          const nextCell = nextRow * (game?.gridSize || gridSize) + nextCol;
-
-          if (occupied.includes(nextCell)) {
-            return true;
-          }
-        }
-      }
-
-      return occupied.includes(item);
-    });
-
-    if (cells.some((item) => occupied.includes(item)) || touchingOccupied) {
+    if (!canPlaceShip(cells, occupiedSet, game?.gridSize || gridSize)) {
       setError("Ships cannot overlap or touch each other.");
       return;
     }
@@ -400,11 +336,12 @@ export default function Multiplayer() {
             : "DIRECT HIT! You get another turn."
         );
       } else if (response.challengeRequired) {
-        setMessage("Three misses in a row! Solve the Fish API challenge.");
+        setSunkShipCells([]);
+        setMessage("Missed shot! Solve the Fish API challenge to continue.");
         await loadChallenge();
       } else {
         setSunkShipCells([]);
-        setMessage("MISS! No challenge yet — the turn passes on the next miss.");
+        setMessage("MISS! The turn passes to your opponent.");
       }
     } catch (err) {
       setError(err.message);
@@ -434,7 +371,7 @@ export default function Multiplayer() {
 
       resolveTimeout();
       setChallenge(null);
-      setMessage("Time expired. Your opponent keeps the turn.");
+      setMessage("Time expired. Mission failed.");
       return;
     }
 
@@ -451,7 +388,7 @@ export default function Multiplayer() {
     setAnswer("");
 
     try {
-      const response = await axios.get("/api/fish/question");
+      const response = await axios.get(`${API_URL}/fish/question`);
 
       setChallenge({
         id: response.data.challengeId,
@@ -459,7 +396,7 @@ export default function Multiplayer() {
       });
 
       setSecondsLeft(response.data.timeLimit || 15);
-      setMessage("Missed shot! Solve the Fish API challenge.");
+      setMessage("Missed shot! Solve the Fish API challenge to continue.");
     } catch (error) {
       setChallengeError(
         "Could not load the Fish API question. Retry to continue."
@@ -480,7 +417,7 @@ export default function Multiplayer() {
     setChallengeError("");
 
     try {
-      const response = await axios.post("/api/fish/answer", {
+      const response = await axios.post(`${API_URL}/fish/answer`, {
         challengeId: challenge.id,
         answer,
       });
@@ -497,7 +434,7 @@ export default function Multiplayer() {
 
         setChallenge(null);
         setAnswer("");
-        setMessage("Correct answer! You may continue the battle.");
+        setMessage("Correct answer! The battle continues.");
       } else {
         try {
           await emitWithAck("resolve-fish-challenge", {
@@ -509,7 +446,8 @@ export default function Multiplayer() {
         }
 
         setChallenge(null);
-        setMessage("Incorrect answer. Your opponent keeps the turn.");
+        setAnswer("");
+        setMessage("Incorrect answer. Mission failed.");
       }
     } catch (error) {
       setChallengeError(
@@ -692,6 +630,8 @@ export default function Multiplayer() {
                 disabled={
                   busy ||
                   Boolean(challenge) ||
+                  loadingChallenge ||
+                  Boolean(challengeError) ||
                   game.status !== "playing" ||
                   isMyBoard ||
                   !myTurn ||
@@ -973,15 +913,19 @@ export default function Multiplayer() {
                   {message || "Select a cell on the enemy grid to fire."}
                 </p>
 
-                {challenge && (
+                {(challenge || loadingChallenge || challengeError) && (
                   <div className="fish-challenge-box">
                     <h3>FISH API CHALLENGE</h3>
 
-                    <p className="fish-timer">
-                      Time left: {secondsLeft}s
-                    </p>
+                    {loadingChallenge && <p>Loading Fish API challenge...</p>}
 
-                    {challenge.imageUrl && (
+                    {challenge && (
+                      <p className="fish-timer">
+                        Time left: {secondsLeft}s
+                      </p>
+                    )}
+
+                    {challenge?.imageUrl && (
                       <img
                         src={challenge.imageUrl}
                         alt="Fish API puzzle"
@@ -989,22 +933,34 @@ export default function Multiplayer() {
                       />
                     )}
 
-                    <form onSubmit={submitChallenge}>
-                      <input
-                        type="text"
-                        value={answer}
-                        onChange={(event) => setAnswer(event.target.value)}
-                        placeholder="Type the fish count"
-                        disabled={checkingAnswer}
-                      />
+                    {challenge && (
+                      <form onSubmit={submitChallenge}>
+                        <input
+                          type="text"
+                          value={answer}
+                          onChange={(event) => setAnswer(event.target.value)}
+                          placeholder="Type the fish count"
+                          disabled={checkingAnswer}
+                        />
 
-                      <button type="submit" disabled={checkingAnswer}>
-                        {checkingAnswer ? "CHECKING..." : "SUBMIT ANSWER"}
-                      </button>
-                    </form>
+                        <button type="submit" disabled={checkingAnswer}>
+                          {checkingAnswer ? "CHECKING..." : "SUBMIT ANSWER"}
+                        </button>
+                      </form>
+                    )}
 
                     {challengeError && (
-                      <p className="multi-error">{challengeError}</p>
+                      <>
+                        <p className="multi-error">{challengeError}</p>
+                        <button
+                          type="button"
+                          className="multi-secondary"
+                          onClick={loadChallenge}
+                          disabled={loadingChallenge}
+                        >
+                          RETRY FISH API
+                        </button>
+                      </>
                     )}
                   </div>
                 )}

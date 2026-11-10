@@ -200,6 +200,32 @@
   opacity: 0.9;
 }
 
+.cell-blast::after {
+  content: "";
+  position: absolute;
+  z-index: 4;
+  inset: -18%;
+  border: 2px solid #fde68a;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(251, 146, 60, 0.65), rgba(239, 68, 68, 0.12) 55%, transparent 72%);
+  pointer-events: none;
+  animation: bombBlast 650ms ease-out forwards;
+}
+
+@keyframes bombBlast {
+  0% {
+    opacity: 0.95;
+    transform: scale(0.2);
+  }
+  70% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+}
+
 @keyframes sunkPulse {
   0% {
     filter: brightness(0.95);

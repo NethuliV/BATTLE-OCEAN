@@ -144,8 +144,8 @@ router.get("/me", async (req, res) => {
       : require("../data/fallbackUsers").findUserById(userId);
 
     if (!user) {
-      return res.status(404).json({
-        message: "Player not found.",
+      return res.status(401).json({
+        message: "Invalid or expired login session.",
       });
     }
 

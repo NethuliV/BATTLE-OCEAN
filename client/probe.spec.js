@@ -1,4 +1,4 @@
-﻿const { test, expect } = require('@playwright/test');
+const { test } = require('@playwright/test');
 
 test('probe app', async ({ page }) => {
   page.on('console', msg => console.log('BROWSER_LOG:', msg.type(), msg.text()));

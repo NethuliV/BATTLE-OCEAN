@@ -1,0 +1,5 @@
+{
+  "SHIP_LENGTHS": [5, 4, 3, 3, 2],
+  "TOTAL_SHIP_CELLS": 17,
+  "VALID_GRID_SIZES": [8, 9, 10]
+}

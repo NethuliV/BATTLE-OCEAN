@@ -6,9 +6,8 @@ const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
 const User = require("../models/User");
 const { findUserById, updateUserRecord, createUserRecord } = require("../data/fallbackUsers");
+const { normalizeFleet, validateFleet, SHIP_LENGTHS, TOTAL_SHIP_CELLS } = require("./fleetValidation");
 
-const SHIP_LENGTHS = [5, 4, 3, 3, 2];
-const TOTAL_SHIP_CELLS = 17;
 const EXTRA_BOMBS = 20;
 const ROOM_STORE_PATH = path.join(__dirname, "..", "data", "rooms.json");
 
@@ -131,116 +130,6 @@ async function getUserRecordById(userId) {
   }
 
   return findUserById(userId);
-}
-
-function normalizeFleet(fleet, gridSize) {
-  if (!Array.isArray(fleet) || fleet.length !== SHIP_LENGTHS.length) {
-    return null;
-  }
-
-  const normalized = [];
-  const occupied = new Set();
-
-  for (let i = 0; i < SHIP_LENGTHS.length; i++) {
-    const ship = fleet[i];
-    const requiredLength = SHIP_LENGTHS[i];
-
-    if (!Array.isArray(ship) || ship.length !== requiredLength) {
-      return null;
-    }
-
-    const uniqueCells = [...new Set(ship.map((cell) => Number(cell)))];
-
-    if (uniqueCells.length !== requiredLength) {
-      return null;
-    }
-
-    const sorted = uniqueCells.sort((a, b) => a - b);
-    const rows = sorted.map((cell) => Math.floor(cell / gridSize));
-    const cols = sorted.map((cell) => cell % gridSize);
-    const sameRow = rows.every((row) => row === rows[0]);
-    const sameCol = cols.every((col) => col === cols[0]);
-
-    if (!sameRow && !sameCol) {
-      return null;
-    }
-
-    if (sameRow) {
-      for (let j = 1; j < sorted.length; j++) {
-        if (sorted[j] !== sorted[j - 1] + 1) {
-          return null;
-        }
-      }
-    }
-
-    if (sameCol) {
-      for (let j = 1; j < sorted.length; j++) {
-        if (sorted[j] !== sorted[j - 1] + gridSize) {
-          return null;
-        }
-      }
-    }
-
-    for (const cell of sorted) {
-      if (!Number.isInteger(cell) || cell < 0 || cell >= gridSize * gridSize) {
-        return null;
-      }
-
-      const row = Math.floor(cell / gridSize);
-      const col = cell % gridSize;
-
-      for (let rowOffset = -1; rowOffset <= 1; rowOffset += 1) {
-        for (let colOffset = -1; colOffset <= 1; colOffset += 1) {
-          if (rowOffset === 0 && colOffset === 0) {
-            continue;
-          }
-
-          const nextRow = row + rowOffset;
-          const nextCol = col + colOffset;
-
-          if (
-            nextRow < 0 ||
-            nextRow >= gridSize ||
-            nextCol < 0 ||
-            nextCol >= gridSize
-          ) {
-            continue;
-          }
-
-          const nextCell = nextRow * gridSize + nextCol;
-
-          if (occupied.has(nextCell)) {
-            return null;
-          }
-        }
-      }
-
-      if (occupied.has(cell)) {
-        return null;
-      }
-
-      occupied.add(cell);
-    }
-
-    normalized.push(sorted);
-  }
-
-  return normalized;
-}
-
-// Validate manually placed ships.
-function validateFleet(fleet, gridSize) {
-  if (!Array.isArray(fleet) || fleet.length !== SHIP_LENGTHS.length) {
-    return false;
-  }
-
-  const normalizedFleet = normalizeFleet(fleet, gridSize);
-
-  if (!normalizedFleet) {
-    return false;
-  }
-
-  return normalizedFleet.reduce((total, ship) => total + ship.length, 0) === TOTAL_SHIP_CELLS;
 }
 
 // Return the game information visible to one particular player.
@@ -583,15 +472,9 @@ function setupMultiplayer(io) {
         sunkShipCells = sunk ? sunkShip : [];
       } else {
         player.missStreak = (player.missStreak || 0) + 1;
-        challengeRequired = player.missStreak >= 3;
-
-        if (challengeRequired) {
-          room.challengePendingFor = player.userId;
-          room.currentTurn = player.userId;
-        } else {
-          room.challengePendingFor = null;
-          room.currentTurn = opponent.userId;
-        }
+        challengeRequired = true;
+        room.challengePendingFor = player.userId;
+        room.currentTurn = player.userId;
       }
 
       let gameOver = false;
@@ -644,15 +527,34 @@ function setupMultiplayer(io) {
         return callback({ ok: false, message: "Opponent not found." });
       }
 
+      const correct = Boolean(data?.correct);
+
       player.missStreak = 0;
       room.challengePendingFor = null;
+
+      if (!correct) {
+        room.status = "finished";
+        room.winner = opponent.userId;
+        room.finishReason = "challenge-failed";
+        persistRooms();
+
+        callback({
+          ok: true,
+          correct: false,
+          message: "Challenge failed. Player eliminated.",
+        });
+
+        finishGame(io, room);
+        return;
+      }
+
       room.currentTurn = opponent.userId;
       persistRooms();
 
       callback({
         ok: true,
-        correct: Boolean(data?.correct),
-        message: data?.correct ? "Challenge solved." : "Challenge failed.",
+        correct: true,
+        message: "Challenge solved.",
       });
 
       sendGameStates(io, room);
@@ -719,6 +621,7 @@ async function finishGame(io, room) {
           winner: room.winner,
           yourId: player.userId,
           yourScore: player.score,
+          reason: room.finishReason,
         });
       }
     }

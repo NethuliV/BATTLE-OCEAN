@@ -32,7 +32,7 @@ const httpServer = http.createServer(app);
 // CORS CONFIGURATION
 // ========================================
 
-const allowedOrigins = [
+const localOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
   "http://localhost:4173",
@@ -42,16 +42,25 @@ const allowedOrigins = [
   "http://127.0.0.1:4174",
 ];
 
+const allowedOrigins = [
+  ...localOrigins,
+  ...(process.env.CLIENT_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+];
+
+function isAllowedOrigin(origin) {
+  return (
+    !origin ||
+    allowedOrigins.includes(origin) ||
+    /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)
+  );
+}
+
 app.use(
   cors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin) || origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:")) {
-        callback(null, true);
-        return;
-      }
-
-      callback(null, true);
-    },
+    origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
     credentials: true,
   })
 );
@@ -64,7 +73,8 @@ app.use(express.json());
 
 const io = new Server(httpServer, {
   cors: {
-    origin: true,
+    origin: (origin, callback) =>
+      callback(null, isAllowedOrigin(origin)),
     methods: ["GET", "POST"],
     credentials: true,
   },
@@ -204,6 +214,11 @@ app.post("/api/fish/answer", (req, res) => {
 const PORT = Number(process.env.PORT) || 5000;
 
 async function connectToMongo() {
+  if (process.env.STORAGE_MODE === "json") {
+    console.log("Running in JSON fallback storage mode (STORAGE_MODE=json).");
+    return false;
+  }
+
   const mongoUri = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/battleocean";
 
   if (!process.env.MONGODB_URI) {
@@ -258,7 +273,7 @@ function listenOnPort(port) {
     httpServer.once("error", onError);
     httpServer.once("listening", onListening);
 
-    httpServer.listen(port);
+    httpServer.listen(port, "0.0.0.0");
   });
 }
 

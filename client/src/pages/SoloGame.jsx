@@ -204,8 +204,9 @@ export default function SoloGame() {
   const [size, setSize] = useState(10);
   const [game, setGame] = useState(() => createNewGame(10));
   const [selectedCell, setSelectedCell] = useState(null);
+  const [blastCell, setBlastCell] = useState(null);
   const [message, setMessage] = useState(
-    "Select a square and launch your bomb."
+    "Click a square to launch your bomb."
   );
 
   const [challenge, setChallenge] = useState(null);
@@ -226,13 +227,14 @@ export default function SoloGame() {
     setSize(nextSize);
     setGame(createNewGame(nextSize));
     setSelectedCell(null);
+    setBlastCell(null);
     setChallenge(null);
     setAnswer("");
     setChallengeError("");
     setLoadingChallenge(false);
     setCheckingAnswer(false);
     setShowShips(false);
-    setMessage("Select a square and launch your bomb.");
+    setMessage("Click a square to launch your bomb.");
   }
 
   useEffect(() => {
@@ -272,6 +274,13 @@ export default function SoloGame() {
   }, [game.status, game.score, refreshUser]);
 
   useEffect(() => {
+    if (blastCell === null) return;
+
+    const timer = setTimeout(() => setBlastCell(null), 650);
+    return () => clearTimeout(timer);
+  }, [blastCell]);
+
+  useEffect(() => {
     if (!challenge || challenge.submitted) return;
 
     if (secondsLeft <= 0) {
@@ -298,7 +307,7 @@ export default function SoloGame() {
     setAnswer("");
 
     try {
-      const response = await axios.get("/api/fish/question");
+      const response = await axios.get(`${API_URL}/fish/question`);
 
       setChallenge({
         id: response.data.challengeId,
@@ -320,17 +329,17 @@ export default function SoloGame() {
     }
   }
 
-  function shoot() {
+  function shoot(targetCell = selectedCell) {
     if (game.status !== "playing" || challenge || loadingChallenge) {
       return;
     }
 
-    if (selectedCell === null) {
+    if (targetCell === null) {
       setMessage("Please select a square first.");
       return;
     }
 
-    if (game.shots[selectedCell] !== null) {
+    if (game.shots[targetCell] !== null) {
       setMessage("You have already bombed that square.");
       return;
     }
@@ -344,10 +353,12 @@ export default function SoloGame() {
       return;
     }
 
-    const isHit = game.ships[selectedCell] === "ship";
+    setSelectedCell(targetCell);
+    setBlastCell(targetCell);
+    const isHit = game.ships[targetCell] === "ship";
 
     const nextShots = [...game.shots];
-    nextShots[selectedCell] = isHit ? "hit" : "miss";
+    nextShots[targetCell] = isHit ? "hit" : "miss";
 
     const nextHits = game.hits + (isHit ? 1 : 0);
     const nextBombs = game.bombs - 1;
@@ -408,7 +419,7 @@ export default function SoloGame() {
     setChallengeError("");
 
     try {
-      const response = await axios.post("/api/fish/answer", {
+      const response = await axios.post(`${API_URL}/fish/answer`, {
         challengeId: challenge.id,
         answer,
       });
@@ -532,6 +543,7 @@ export default function SoloGame() {
                 if (shot === "miss") cellClass += " cell-miss";
                 if (isSelected) cellClass += " cell-selected";
                 if (revealShip) cellClass += " cell-debug-ship";
+                if (blastCell === index) cellClass += " cell-blast";
 
                 return (
                   <button
@@ -545,7 +557,8 @@ export default function SoloGame() {
                       loadingChallenge ||
                       shot !== null
                     }
-                    onClick={() => setSelectedCell(index)}
+                    onFocus={() => setSelectedCell(index)}
+                    onClick={() => shoot(index)}
                   >
                     {shot === "hit" && !isSunkShip && <span>✹</span>}
                     {shot === "miss" && <span>·</span>}
@@ -576,6 +589,7 @@ export default function SoloGame() {
               disabled={
                 gameOver ||
                 selectedCell === null ||
+                game.shots[selectedCell] !== null ||
                 Boolean(challenge) ||
                 loadingChallenge
               }
@@ -615,7 +629,7 @@ export default function SoloGame() {
               ? "Your mission has ended. Try again."
               : challenge
               ? "Solve the puzzle before the countdown expires."
-              : "Select a cell on the tactical grid to target enemy ships."}
+              : "Click a cell on the tactical grid to launch your bomb. You can also focus a cell and use Launch Bomb."}
           </p>
 
           {challenge && (
